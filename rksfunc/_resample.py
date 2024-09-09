@@ -171,7 +171,7 @@ def Gammarize(clip: VideoNode, gamma, tvrange=False) -> VideoNode:
     thrl = scale8(16, bits) if tvrange else scale8(0, bits)
     thrh = scale8(235, bits) if tvrange else scale8(255, bits)
     rng = scale8(235 - 16, bits) if tvrange else scale8(255 - 0, bits)
-    corrected = y.std.Expr(f'x {rng} / {gamma} pow {rng} * {thrl} + {thrl} max {thrh} min')
+    corrected = y.akarin.Expr(f'x {rng} / {gamma} pow {rng} * {thrl} + {thrl} max {thrh} min')
     
     return mergeuv(corrected, clip) if is_yuv else corrected
 
@@ -222,18 +222,18 @@ def RescaleLuma(
     descale = Resize(y, w, h, kernel=kernel, a1=b, a2=c, taps=taps, invks=True)
     rescale = nnr2(descale, rf, ow, oh, upsizer=upsizer, nsize=4, nns=4, qual=1, pscrn=2)
     upscale = Resize(descale, ow, oh, kernel=kernel, a1=b, a2=c, taps=taps)
-    dmask = core.std.Expr([y, upscale], 'x y - abs')
+    dmask = core.akarin.Expr([y, upscale], 'x y - abs')
     dmask = iterate(dmask, core.std.Maximum, num_maximum)
     dmask = iterate(dmask, core.std.Inflate, num_inflate)
     
     if linemode:
-        emask = rescale.std.Prewitt().std.Expr(f'x {thrh} >= {maxv} x {thrl} <= 0 x ? ?')
-        cmask = core.std.Expr([dmask, emask], f'x {thrdes} >= 0 y ?').std.Inflate().std.Deflate()
+        emask = rescale.std.Prewitt().akarin.Expr(f'x {thrh} >= {maxv} x {thrl} <= 0 x ? ?')
+        cmask = core.akarin.Expr([dmask, emask], f'x {thrdes} >= 0 y ?').std.Inflate().std.Deflate()
         if maskmode == 1:
             return cmask
         yrs = core.std.MaskedMerge(y, rescale, cmask)
     else:
-        cmask = dmask.std.Expr(f'x {thrdes} >= {maxv} 0 ?').std.Maximum().std.Maximum().std.Minimum().std.Inflate()
+        cmask = dmask.akarin.Expr(f'x {thrdes} >= {maxv} 0 ?').std.Maximum().std.Maximum().std.Minimum().std.Inflate()
         if maskmode == 1:
             return cmask
         yrs = core.std.MaskedMerge(rescale, y, cmask)

@@ -98,8 +98,8 @@ def daaJanmod(clip: VideoNode, itr: int = 4, opencl: bool = True) -> VideoNode:
     def _cs(flt: VideoNode, src: VideoNode, p: float = 2.35) -> VideoNode:
         from havsfunc import Gauss
         blur = Gauss(flt, p=p)
-        sharp = core.std.Expr([flt, blur], 'x 2 * y -')
-        return core.std.Expr([sharp, flt, src], 'x y z min max y z max min')
+        sharp = core.akarin.Expr([flt, blur], 'x 2 * y -')
+        return core.akarin.Expr([sharp, flt, src], 'x y z min max y z max min')
 
     res = clip
     for _ in range(itr):
@@ -125,11 +125,11 @@ def AliceDeband(clip: VideoNode) -> VideoNode:
     maskd = yer(kill.tcanny.TCanny(0.6, t_h=7, planes=0, op=2))
     maskl = yer(kill.tcanny.TCanny(0.7, t_h=8, planes=0, op=2))
     srcy8 = yer(clip).fmtc.bitdepth(bits=8)
-    mask1 = core.std.Expr([maskd, maskl, srcy8], "z 28 < 65535 z 64 < x y ? ?")
+    mask1 = core.akarin.Expr([maskd, maskl, srcy8], "z 28 < 65535 z 64 < x y ? ?")
     mask1 = iterate(mask1.std.Inflate(), core.std.Maximum, 3)
     mask1 = mask1.std.Inflate().std.Minimum()
-    mask2 = core.std.Expr([mask1, maskg], "x y > x y ?")
-    deband_mask = core.std.Expr([mask1, mask2, srcy8], "z 96 < x y ?")
+    mask2 = core.akarin.Expr([mask1, maskg], "x y > x y ?")
+    deband_mask = core.akarin.Expr([mask1, mask2, srcy8], "z 96 < x y ?")
     deband = kill.f3kdb.Deband(12, 80, 80, 80, 0, 0, output_depth=16)
     deband = deband.f3kdb.Deband(24, 60, 60, 60, 0, 0, output_depth=16)
     deband = LimitFilter(deband, kill, thr=0.6, brighten_thr=0.6, elast=1.2)
@@ -148,7 +148,7 @@ def TAAWrapper(cyuv: VideoNode, ay: int, auv: int, cmask: VideoNode = None, rpmo
     aa = TAAmbk(cyuv, **preargs)
     aa = core.rgvs.Repair(aa, cyuv, rpmode)
     if nocmask:
-        return aa;
+        return aa
     if cmask is None:
         nw, nh = cyuv.width * 3 // 4, cyuv.height * 3 // 4
         cmask = RescaleLuma(cyuv, nw, nh, 'bicubic', 1, 0, linemode=False, maskmode=1)
