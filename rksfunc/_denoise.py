@@ -133,57 +133,117 @@ def TempoStab(clip: VideoNode, mdargs: dict = {}, mdmode=2) -> VideoNode:
         smd = smd.fmtc.bitdepth(bits=origdep)
     return smd
 
-
+# (variable) def Bv2(
+#     clip: VideoNode,
+#     ref: VideoNode = ...,
+#     sigma: float | Sequence[float] = ...,
+#     block_step: int | Sequence[int] = ...,
+#     bm_range: int | Sequence[int] = ...,
+#     radius: int = ...,
+#     ps_num: int = ...,
+#     ps_range: int = ...,
+#     chroma: int = ...,
+#     zero_init: int = ...
+# ) -> VideoNode
 def BM3DRef(
     c420p16: VideoNode, ref: VideoNode,
     bm3d=core.bm3dcpu, chroma=True,
-    sy=2, ry=1, bsy=4, bry=8, pny=2, pry=8,
-    sc=2, rc=0, bsc=4, brc=8, pnc=2, prc=6,
+    sigma_Y=2, radius_Y=1, block_step_Y=4, bm_range_Y=8, ps_num_Y=2, ps_range_Y=8,
+    sigma_chroma=2, radius_chroma=0, block_step_chroma=4, bm_range_chroma=8, ps_num_chroma=2, ps_range_chroma=6,
 ) -> VideoNode:
     from vapoursynth import YUV444PS
     from vsutil import split, join
     from ._resample import rgb2opp, opp2rgb, torgbs
 
     Bv2 = bm3d.BM3Dv2
-    hw = c420p16.width // 2  # half width
-    hh = c420p16.height // 2  # half height
-    srcy_f, srcu_f, srcv_f = split(c420p16.fmtc.bitdepth(bits=32))
-    refy_f, refu_f, refv_f = split(ref.fmtc.bitdepth(bits=32))
-    vfinal_y = Bv2(srcy_f, refy_f, sy, bsy, bry, ry, pny, pry)
-    vyhalf = vfinal_y.resize.Spline36(hw, hh, src_left=-0.5)
-    ryhalf = refy_f.resize.Spline36(hw, hh, src_left=-0.5)
-    srchalf_444 = join([vyhalf, srcu_f, srcv_f])
-    refhalf_444 = join([ryhalf, refu_f, refv_f])
+    half_width = c420p16.width // 2  # half width
+    half_height = c420p16.height // 2  # half height
+    srcY_float, srcU_float, srcV_float = split(c420p16.fmtc.bitdepth(bits=32))
+    refY_float, refU_float, refV_float = split(ref.fmtc.bitdepth(bits=32))
+    vfinalY = Bv2(clip=srcY_float, ref=refY_float, sigma=sigma_Y, block_step=block_step_Y, bm_range=bm_range_Y, radius=radius_Y, ps_num=ps_num_Y, ps_range=ps_range_Y)
+    vfinalY_half = vfinalY.resize.Spline36(width=half_width, height=half_height, src_left=-0.5)
+    refY_half = refY_float.resize.Spline36(width=half_width, height=half_height, src_left=-0.5)
+    srchalf_444 = join([vfinalY_half, srcU_float, srcV_float])
+    refhalf_444 = join([refY_half, refU_float, refV_float])
     srchalf_opp = rgb2opp(torgbs(srchalf_444))
     refhalf_opp = rgb2opp(torgbs(refhalf_444))
-    vfinal_half = Bv2(srchalf_opp, refhalf_opp, sc, bsc, brc, rc, pnc, prc, chroma)
+    vfinal_half = Bv2(clip=srchalf_opp, ref=refhalf_opp, sigma=sigma_chroma, block_step=block_step_chroma, bm_range=bm_range_chroma, radius=radius_chroma, ps_num=ps_num_chroma, ps_range=ps_range_chroma, chroma=chroma)
     vfinal_half = opp2rgb(vfinal_half).resize.Spline36(format=YUV444PS, matrix=1)
     _, vfinal_u, vfinal_v = split(vfinal_half)
-    vfinal = join([vfinal_y, vfinal_u, vfinal_v])
+    vfinal = join([vfinalY, vfinal_u, vfinal_v])
     return vfinal.fmtc.bitdepth(bits=16)
-
 
 def BM3DWrapper(
     c420p16: VideoNode,
     bm3d=core.bm3dcpu, chroma=True,
-    sy=1.2, ry=1, bsy=4, bry=8, pny=2, pry=8, dsy=0.6,
-    sc=2.4, rc=0, bsc=4, brc=8, pnc=2, prc=6, dsc=1.2,
+    sigma_Y=1.2, radius_Y=1, block_step_Y=4, bm_range_Y=8, ps_num_Y=2, ps_range_Y=8, delta_sigma_Y=0.6,
+    sigma_chroma=2.4, radius_chroma=0, block_step_chroma=4, bm_range_chroma=8, ps_num_chroma=2, ps_range_chroma=6, delta_sigma_chroma=1.2,
 ) -> VideoNode:
+    '''
+    Note: delta_sigma_xxx is added to sigma_xxx in step basic.
+    '''
     from vapoursynth import YUV444PS
     from vsutil import split, join
     from ._resample import rgb2opp, opp2rgb, torgbs
 
     Bv2 = bm3d.BM3Dv2
-    hw = c420p16.width // 2  # half width
-    hh = c420p16.height // 2  # half height
-    srcy_f, srcu_f, srcv_f = split(c420p16.fmtc.bitdepth(bits=32))
-    vbasic_y = Bv2(srcy_f, srcy_f, sy+dsy, bsy, bry, ry, pny, pry)
-    vfinal_y = Bv2(srcy_f, vbasic_y, sy, bsy, bry, ry, pny, pry)
-    vyhalf = vfinal_y.resize.Spline36(hw, hh, src_left=-0.5)
-    srchalf_444 = join([vyhalf, srcu_f, srcv_f])
+    half_width = c420p16.width // 2  # half width
+    half_height = c420p16.height // 2  # half height
+    srcY_float, srcU_float, srcV_float = split(c420p16.fmtc.bitdepth(bits=32))
+
+    # Explicitly adding parameter names to Bv2 calls
+    vbasic_y = Bv2(
+        clip=srcY_float,
+        ref=srcY_float,
+        sigma=sigma_Y + delta_sigma_Y,
+        block_step=block_step_Y,
+        bm_range=bm_range_Y,
+        radius=radius_Y,
+        ps_num=ps_num_Y,
+        ps_range=ps_range_Y,
+    )
+    
+    vfinal_y = Bv2(
+        clip=srcY_float,
+        ref=vbasic_y,
+        sigma=sigma_Y,
+        block_step=block_step_Y,
+        bm_range=bm_range_Y,
+        radius=radius_Y,
+        ps_num=ps_num_Y,
+        ps_range=ps_range_Y,
+    )
+    
+    vyhalf = vfinal_y.resize.Spline36(half_width, half_height, src_left=-0.5)
+    srchalf_444 = join([vyhalf, srcU_float, srcV_float])
     srchalf_opp = rgb2opp(torgbs(srchalf_444))
-    vbasic_half = Bv2(srchalf_opp, srchalf_opp, sc+dsc, bsc, brc, rc, pnc, prc, chroma)
-    vfinal_half = Bv2(srchalf_opp, vbasic_half, sc, bsc, brc, rc, pnc, prc, chroma)
+
+    vbasic_half = Bv2(
+        clip=srchalf_opp,
+        ref=srchalf_opp,
+        sigma=sigma_chroma + delta_sigma_chroma,
+        block_step=block_step_chroma,
+        bm_range=bm_range_chroma,
+        radius=radius_chroma,
+        ps_num=ps_num_chroma,
+        ps_range=ps_range_chroma,
+        chroma=chroma,
+        zero_init=0
+    )
+
+    vfinal_half = Bv2(
+        clip=srchalf_opp,
+        ref=vbasic_half,
+        sigma=sigma_chroma,
+        block_step=block_step_chroma,
+        bm_range=bm_range_chroma,
+        radius=radius_chroma,
+        ps_num=ps_num_chroma,
+        ps_range=ps_range_chroma,
+        chroma=chroma,
+        zero_init=0
+    )
+
     vfinal_half = opp2rgb(vfinal_half).resize.Spline36(format=YUV444PS, matrix=1)
     _, vfinal_u, vfinal_v = split(vfinal_half)
     vfinal = join([vfinal_y, vfinal_u, vfinal_v])
